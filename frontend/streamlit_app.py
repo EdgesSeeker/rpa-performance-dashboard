@@ -216,7 +216,8 @@ with c3:
     st.caption("Anteil der erfolgreich abgeschlossenen Jobs")
 with c4:
     impact = idle_hours_sum * 50
-    st.metric("Business Impact (Idle)", f"€{impact:.0f}")
+    impact_formatted = f"{impact:,.0f}".replace(",", ".")
+    st.metric("Business Impact (Idle)", f"€{impact_formatted}")
     st.caption("Geschätzter Verlust durch Idle-Zeit (50 €/h)")
 
 # --- Weekly Trends ---
@@ -227,16 +228,17 @@ def render_weekly_trends_section(trends_data: dict) -> None:
     weeks = trends_data["weeks"]
     trend = trends_data.get("overall_trend", {})
     st.header("Wochen-Vergleich")
-    st.caption(f"Entwicklung der letzten {len(weeks)} Wochen (Basis: letzte 90 Tage, gruppiert nach Kalenderwoche). "
-               "Ø Auslastung = Mittel der täglichen Auslastung pro Robot (Donald & Mickey). "
-               "Niedrige Werte in älteren Wochen entsprechen den tatsächlichen Daten – z. B. weniger Läufe im Nov/Dez.")
+    st.caption(f"Vergleich: erste vs. letzte Woche der letzten {len(weeks)} Kalenderwochen (Basis: letzte 90 Tage). "
+               "Ø Auslastung = Mittel der täglichen Auslastung pro Robot (Donald & Mickey).")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Trend Auslastung", f"{trend.get('utilization_change', 0):+.1f}%", delta=f"über {len(weeks)} Wochen", delta_color="normal")
+        st.metric("Trend Auslastung", f"{trend.get('utilization_change', 0):+.1f}%", delta=f"erste → letzte von {len(weeks)} Wochen", delta_color="normal")
     with col2:
-        st.metric("Idle-Reduktion", f"{trend.get('idle_reduction_hours_week', 0):.1f}h/Woche", delta="vs. Anfang", delta_color="inverse")
+        first = weeks[0]
+        st.metric("Erste Woche", f"{first['avg_utilization']:.1f}%", delta=f"{first['week_number']} ({first['date_range']})", delta_color="off")
     with col3:
-        st.metric("Verbesserung", f"€{trend.get('improvement_value_euro_month', 0):.0f}/Monat", delta="zusätzliche Kapazität", delta_color="normal")
+        last = weeks[-1]
+        st.metric("Letzte Woche", f"{last['avg_utilization']:.1f}%", delta=f"{last['week_number']} ({last['date_range']})", delta_color="off")
     st.divider()
     df_t = pd.DataFrame(weeks)
     trends_col = [""]
