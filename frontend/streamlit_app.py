@@ -113,8 +113,8 @@ if "load_success" in st.session_state:
     st.sidebar.success(st.session_state.load_success)
     del st.session_state["load_success"]
 if st.sidebar.button("Daten von UiPath laden"):
-    sync_days = 30  # Cloud-Timeout: 30 Tage reichen, bei Bedarf lokal erhöhen
-    with st.spinner("Lade Daten von UiPath … (Sync + Utilization, kann 30–60 s dauern)"):
+    sync_days = 90
+    with st.spinner(f"Lade Daten von UiPath … ({sync_days} Tage, kann 1–2 Min. dauern)"):
         try:
             n_jobs = sync_jobs_module.run_sync(days=sync_days)
             n_util = calc_util_module.calculate_and_store()
@@ -227,7 +227,7 @@ def render_weekly_trends_section(trends_data: dict) -> None:
     weeks = trends_data["weeks"]
     trend = trends_data.get("overall_trend", {})
     st.header("Wochen-Vergleich")
-    st.caption(f"Entwicklung der letzten {len(weeks)} Wochen (Basis: letzte 30 Tage, gruppiert nach Kalenderwoche). "
+    st.caption(f"Entwicklung der letzten {len(weeks)} Wochen (Basis: letzte 90 Tage, gruppiert nach Kalenderwoche). "
                "Ø Auslastung = Mittel der täglichen Auslastung pro Robot (Donald & Mickey). "
                "Niedrige Werte in älteren Wochen entsprechen den tatsächlichen Daten – z. B. weniger Läufe im Nov/Dez.")
     col1, col2, col3 = st.columns(3)
@@ -271,7 +271,7 @@ def render_weekly_trends_section(trends_data: dict) -> None:
 try:
     from backend.services.trends_service import calculate_weekly_trends
     _db = SessionLocal()
-    trends = calculate_weekly_trends(_db, 30)
+    trends = calculate_weekly_trends(_db, 90)
     _db.close()
     render_weekly_trends_section(trends)
 except Exception as e:

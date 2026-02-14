@@ -30,7 +30,10 @@ def _make_client() -> UiPathClient:
     org = os.getenv("UIPATH_ORG_SLUG", "lackmann")
     folder_id = os.getenv("UIPATH_FOLDER_ID")
     if not client_id or not client_secret:
-        raise ValueError("Set UIPATH_CLIENT_ID and UIPATH_CLIENT_SECRET in .env")
+        raise ValueError(
+            "UIPATH_CLIENT_ID und UIPATH_CLIENT_SECRET fehlen. "
+            "Lokal: in .env eintragen. Streamlit Cloud: App → Settings → Secrets (siehe README)."
+        )
     return UiPathClient(
         client_id=client_id,
         client_secret=client_secret,
