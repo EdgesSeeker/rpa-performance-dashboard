@@ -438,7 +438,25 @@ if not df_jobs.empty and df_jobs["end_time"].notna().any():
 else:
     st.caption("Keine Job-Daten mit Endzeit.")
 
-# --- Quick Wins ---
+# --- Quick Wins: Prozessdauern aus denselben Daten wie Prozess-Detail (df_jobs) für Vorschläge ---
+def _process_durations_from_df(df_jobs: pd.DataFrame) -> list[tuple[str, float]]:
+    """(process_name, Ø Dauer in Min) aus df_jobs, sortiert nach Dauer aufsteigend. Gleiche Basis wie Prozess-Detail."""
+    if df_jobs.empty or "end_time" not in df_jobs.columns or "start_time" not in df_jobs.columns:
+        return []
+    df = df_jobs.copy()
+    df["dur_sec"] = (df["end_time"] - df["start_time"]).dt.total_seconds()
+    df = df[df["dur_sec"].notna() & (df["dur_sec"] > 0)]
+    if df.empty:
+        return []
+    proc = df.groupby("process_name")["dur_sec"].mean().reset_index()
+    proc = proc[proc["process_name"].astype(str).str.strip() != ""]
+    if proc.empty:
+        return []
+    out = [(row["process_name"], round(row["dur_sec"] / 60.0, 1)) for _, row in proc.iterrows()]
+    out.sort(key=lambda x: x[1])
+    return out
+
+
 def render_quickwins_section(quickwins_data: dict) -> None:
     st.header("Quick Wins – Sofort umsetzbare Optimierungen")
     with st.expander("Wie funktioniert Quick Wins?"):
@@ -471,6 +489,18 @@ def render_quickwins_section(quickwins_data: dict) -> None:
                 st.subheader(f"#{win_number}: Recurring Idle – {pattern.get('robot', '')}")
                 st.write(f"**{pattern.get('time_slot', '')}** – {pattern.get('frequency', '')} idle")
                 st.write(f"Ø {pattern.get('avg_idle_minutes', 0):.0f} Minuten")
+                suggested = pattern.get("suggested_processes") or []
+                if suggested:
+                    options = [f"{name} — Ø {dur:.1f} min" for name, dur in suggested]
+                    st.selectbox(
+                        "Passende Prozesse (Ø Dauer ≤ Idle-Zeit)",
+                        options=options,
+                        index=0,
+                        key=f"quickwin_recurring_{win_number}",
+                        label_visibility="visible",
+                    )
+                else:
+                    st.caption("_Keine Prozessdaten der letzten 7 Tage für Vorschläge._")
             with c2:
                 st.metric("Potential", f"{pattern.get('potential_hours_week', 0):.1f}h/Woche")
             with c3:
@@ -484,6 +514,18 @@ def render_quickwins_section(quickwins_data: dict) -> None:
                 st.subheader(f"#{win_number}: Unterlastetes Zeitfenster")
                 st.write(f"**{window.get('window', '')}**")
                 st.write(f"Aktuelle Auslastung: {window.get('current_utilization', 0):.1f}%")
+                suggested = window.get("suggested_processes") or []
+                if suggested:
+                    options = [f"{name} — Ø {dur:.1f} min" for name, dur in suggested]
+                    st.selectbox(
+                        "Prozesse die ins Fenster passen (Ø ≤ 90 min)",
+                        options=options,
+                        index=0,
+                        key=f"quickwin_window_{win_number}",
+                        label_visibility="visible",
+                    )
+                else:
+                    st.caption("_Keine Prozessdaten der letzten 7 Tage für Vorschläge._")
             with c2:
                 st.metric("Potential", f"{window.get('potential_hours_week', 0):.1f}h/Woche")
             with c3:
@@ -496,37 +538,18 @@ try:
     _db = SessionLocal()
     quickwins = analyze_quickwins(_db, days=7)
     _db.close()
+    # Vorschläge aus denselben Daten wie Prozess-Detail (df_jobs), alle passenden (kein Limit)
+    process_durations_fe = _process_durations_from_df(df_jobs)
+    for r in quickwins.get("recurring_idle", []):
+        avail = r.get("avg_idle_minutes", 0)
+        fitting = [(n, d) for n, d in process_durations_fe if 1 <= d <= avail]
+        r["suggested_processes"] = fitting if fitting else process_durations_fe
+    for u in quickwins.get("underutilized_windows", []):
+        fitting = [(n, d) for n, d in process_durations_fe if 1 <= d <= 90]
+        u["suggested_processes"] = fitting if fitting else process_durations_fe
     render_quickwins_section(quickwins)
 except Exception as e:
     st.warning(f"Quick Wins Analyse nicht verfügbar: {e}")
-
-# --- Excel Export ---
-st.header("Excel-Export")
-exports_dir = ROOT / "exports"
-exports_dir.mkdir(exist_ok=True)
-
-def build_excel() -> Path:
-    from backend.services.export_service import export_daily_summary
-    fname = exports_dir / f"rpa_performance_{date_end.isoformat()}.xlsx"
-    db = SessionLocal()
-    try:
-        kpi_metrics = {"avg_util": avg_util, "idle_hours_sum": idle_hours_sum, "success_rate": rate, "impact": impact}
-        return export_daily_summary(db, date_start, date_end, kpi_metrics, df_util, fname)
-    finally:
-        db.close()
-
-if "export_path" not in st.session_state:
-    st.session_state.export_path = None
-if st.button("Excel exportieren"):
-    try:
-        path = build_excel()
-        st.session_state.export_path = path
-        st.success(f"Export erstellt: {path.name}")
-    except Exception as e:
-        st.error(f"Export fehlgeschlagen: {e}")
-if st.session_state.export_path and st.session_state.export_path.exists():
-    with open(st.session_state.export_path, "rb") as f:
-        st.download_button("Download Excel", data=f.read(), file_name=st.session_state.export_path.name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # --- Prozess-Detail: Laufzeiten & Scheduling ---
 proc_df = _compute_process_stats(df_jobs)
@@ -734,3 +757,32 @@ if selected_messstellen_prozess == "Reklamation Ablehnen":
         )
 else:
     st.info("Für diesen Prozess sind noch keine Daten hinterlegt.")
+
+# --- Excel Export (ganz am Ende) ---
+st.divider()
+st.header("Excel-Export")
+exports_dir = ROOT / "exports"
+exports_dir.mkdir(exist_ok=True)
+
+def build_excel() -> Path:
+    from backend.services.export_service import export_daily_summary
+    fname = exports_dir / f"rpa_performance_{date_end.isoformat()}.xlsx"
+    db = SessionLocal()
+    try:
+        kpi_metrics = {"avg_util": avg_util, "idle_hours_sum": idle_hours_sum, "success_rate": rate, "impact": impact}
+        return export_daily_summary(db, date_start, date_end, kpi_metrics, df_util, fname)
+    finally:
+        db.close()
+
+if "export_path" not in st.session_state:
+    st.session_state.export_path = None
+if st.button("Excel exportieren"):
+    try:
+        path = build_excel()
+        st.session_state.export_path = path
+        st.success(f"Export erstellt: {path.name}")
+    except Exception as e:
+        st.error(f"Export fehlgeschlagen: {e}")
+if st.session_state.export_path and st.session_state.export_path.exists():
+    with open(st.session_state.export_path, "rb") as f:
+        st.download_button("Download Excel", data=f.read(), file_name=st.session_state.export_path.name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

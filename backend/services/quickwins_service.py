@@ -156,10 +156,33 @@ def find_underutilized_windows(jobs: list[Job], days: int) -> list[dict[str, Any
     return result
 
 
+def _process_avg_durations_minutes(jobs: list[Job]) -> list[tuple[str, float]]:
+    """Pro Prozess: (process_name, Ø Dauer in Minuten). Sortiert nach Dauer aufsteigend."""
+    from collections import defaultdict
+    by_process: dict[str, list[float]] = defaultdict(list)
+    for j in jobs:
+        name = (j.process_name or "").strip()
+        if not name or j.start_time is None or j.end_time is None:
+            continue
+        start = _to_naive(j.start_time)
+        end = _to_naive(j.end_time)
+        if end is None or start is None or end <= start:
+            continue
+        mins = (end - start).total_seconds() / 60.0
+        by_process[name].append(mins)
+    result = [
+        (name, sum(durs) / len(durs))
+        for name, durs in by_process.items()
+        if durs
+    ]
+    result.sort(key=lambda x: x[1])
+    return result
+
+
 def analyze_quickwins(db: Session, days: int = 7) -> dict[str, Any]:
     """
     Analyze last N days for optimization opportunities.
-    Returns recurring_idle, underutilized_windows, totals, and impact.
+    Returns recurring_idle, underutilized_windows, totals, impact, and suggested processes per slot.
     """
     end_date = datetime.now().date()
     start_date = end_date - timedelta(days=days)
@@ -176,8 +199,38 @@ def analyze_quickwins(db: Session, days: int = 7) -> dict[str, Any]:
         .all()
     )
 
+    # Prozess-Ø-Dauern: zuerst 90-Tage-Fenster, Fallback = dieselben 7-Tage-Jobs wie für Quick Wins
+    days_for_durations = 90
+    start_dur = end_date - timedelta(days=days_for_durations)
+    t_start_dur = datetime.combine(start_dur, datetime.min.time())
+    jobs_for_durations = (
+        db.query(Job)
+        .filter(
+            Job.end_time.isnot(None),
+            Job.process_name.isnot(None),
+            Job.start_time < t_end,
+            Job.end_time >= t_start_dur,
+        )
+        .all()
+    )
+    process_durations = _process_avg_durations_minutes(jobs_for_durations)
+    if not process_durations:
+        process_durations = _process_avg_durations_minutes(jobs)
+
     recurring = find_recurring_idle(jobs, days)
     underutilized = find_underutilized_windows(jobs, days)
+
+    # Prozessvorschläge: passen in die verfügbare Zeit (Ø Dauer <= avg_idle_minutes); sonst Fallback = kürzeste Prozesse
+    max_suggestions = 5
+    for r in recurring:
+        avail_min = r.get("avg_idle_minutes", 0)
+        fitting = [(name, round(dur, 1)) for name, dur in process_durations if 1 <= dur <= avail_min][:max_suggestions]
+        r["suggested_processes"] = fitting if fitting else [(name, round(dur, 1)) for name, dur in process_durations[:max_suggestions]]
+    # Unterlastete Fenster: Prozesse mit Ø Dauer bis 90 Min; sonst kürzeste
+    window_max_min = 90
+    for u in underutilized:
+        fitting = [(name, round(dur, 1)) for name, dur in process_durations if 1 <= dur <= window_max_min][:max_suggestions]
+        u["suggested_processes"] = fitting if fitting else [(name, round(dur, 1)) for name, dur in process_durations[:max_suggestions]]
 
     total_hours = sum(r["potential_hours_week"] for r in recurring) + sum(u["potential_hours_week"] for u in underutilized)
     total_impact = total_hours * WEEKS_PER_MONTH * EUR_PER_HOUR
