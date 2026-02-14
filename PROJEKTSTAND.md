@@ -16,6 +16,7 @@
 | **Quick Wins** | Automatisch erkannte Optimierungen: Recurring Idle, unterlastete Zeitfenster, Potential h/Woche und €/Monat |
 | **Excel-Export** | Executive Summary / Bericht als Excel-Download |
 | **Prozess-Detail** | Prozess-Statistik (Läufe, Success Rate, Ø/Min/Max Dauer), Tabelle + 3 Plotly-Charts |
+| **Datensätze bearbeitet pro Prozess** | Experimentell: Prozess wählen (z. B. Reklamation Ablehnen), Quick Facts (Success Rate, Ø Dauer, Runs, Max Runtime), Datensätze insgesamt (letzter Monat), zwei Graphen (Messstellen pro Tag, Success Rate über die Zeit). Daten aus `data/ablehnen_messstellen_summary.csv` (nur Tag + Anzahl, keine Malos). |
 
 ---
 
@@ -57,7 +58,7 @@
 - **Repo:** Projekt ist mit `.gitignore` vorbereitet (`.env`, `*.db`, `venv/`, `exports/` werden nicht committed). Repo anlegen, `git add` / `commit` / `remote` / `push`.
 - **Streamlit Community Cloud:** [share.streamlit.io](https://share.streamlit.io) → mit GitHub anmelden → New app → Repository/Branch angeben, **Main file path:** `frontend/streamlit_app.py`.
 - **Secrets:** In der App unter Settings → Secrets die UiPath-Variablen eintragen (`UIPATH_CLIENT_ID`, `UIPATH_CLIENT_SECRET`, `UIPATH_ORG_SLUG`, `UIPATH_TENANT_NAME`, `UIPATH_FOLDER_ID`).
-- **„Daten laden“-Button:** In der Sidebar „Daten von UiPath laden“ klicken → Sync (30 Tage) + Utilization werden ausgeführt, Cache geleert, Seite zeigt danach die neuen Daten. Auf der Cloud ist das Dateisystem ephemeral; nach Neustart/Sleep einmalig erneut „Daten laden“ klicken (z. B. vor einer Präsentation).
+- **„Daten laden“-Button:** In der Sidebar „Daten von UiPath laden“ klicken → Sync (90 Tage) + Utilization werden ausgeführt, Cache geleert, Seite zeigt danach die neuen Daten. Auf der Cloud ist das Dateisystem ephemeral; nach Neustart/Sleep einmalig erneut „Daten laden“ klicken (z. B. vor einer Präsentation).
 
 ---
 
