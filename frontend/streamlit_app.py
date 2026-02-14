@@ -596,9 +596,11 @@ def _load_ablehnen_messstellen_per_day() -> pd.DataFrame | None:
         try:
             df = pd.read_csv(master_path)
             if not df.empty and "date" in df.columns and "n" in df.columns:
-                df["date"] = pd.to_datetime(df["date"]).dt.date
-                df = df.sort_values("date").reset_index(drop=True)
-                return df
+                df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+                df = df.dropna(subset=["date", "n"])
+                if not df.empty:
+                    df = df.sort_values("date").reset_index(drop=True)
+                    return df
         except Exception:
             pass
     import re
@@ -722,6 +724,9 @@ if selected_messstellen_prozess == "Reklamation Ablehnen":
             except Exception:
                 pass
     else:
-        st.info("Keine Daten (letzter Monat). Ordner „Claude Input/Ablehnen_Analyse/erledigt“ mit CSV-Dateien anlegen.")
+        st.info(
+            "Keine Daten (letzter Monat). Auf Streamlit Cloud: Lokal „python -m backend.update_ablehnen_summary“ "
+            "ausführen (liest erledigt/*.csv), dann data/ablehnen_messstellen_summary.csv committen und pushen."
+        )
 else:
     st.info("Für diesen Prozess sind noch keine Daten hinterlegt.")
