@@ -420,15 +420,19 @@ if not df_jobs.empty and df_jobs["end_time"].notna().any():
                 tbl = pd.DataFrame(timeline_entries)
                 tbl["Von"] = pd.to_datetime(tbl["Von"]).dt.strftime("%H:%M")
                 tbl["Bis"] = pd.to_datetime(tbl["Bis"]).dt.strftime("%H:%M")
-                st.caption("Chronologisch: Jobs und Leerläufe pro Robot (wann welcher Robot idle war)")
-                st.dataframe(tbl[["Von", "Bis", "Prozess", "Robot", "Dauer", "Status"]], use_container_width=True, hide_index=True, column_config={
-                    "Von": st.column_config.TextColumn("Von", width="small"),
-                    "Bis": st.column_config.TextColumn("Bis", width="small"),
-                    "Prozess": st.column_config.TextColumn("Prozess", width="large"),
-                    "Robot": st.column_config.TextColumn("Robot", width="small"),
-                    "Dauer": st.column_config.TextColumn("Dauer", width="small"),
-                    "Status": st.column_config.TextColumn("Status", width="small"),
-                })
+                display_tbl = tbl[["Von", "Bis", "Prozess", "Robot", "Dauer", "Status"]].copy()
+                st.caption("Chronologisch: Jobs und Leerläufe pro Robot (wann welcher Robot idle war). Leerlauf-Zeilen rot markiert.")
+                def _row_bg(row):
+                    is_leerlauf = "Leerlauf" in str(row["Prozess"])
+                    return ["background-color: #ffcccc" if is_leerlauf else ""] * len(row)
+                try:
+                    styled = display_tbl.style.apply(_row_bg, axis=1).set_table_styles([
+                        {"selector": "th", "props": [("font-size", "12px"), ("text-align", "left")]},
+                        {"selector": "td", "props": [("font-size", "12px")]},
+                    ]).hide(axis="index")
+                    st.markdown(styled.to_html(), unsafe_allow_html=True)
+                except Exception:
+                    st.dataframe(display_tbl, use_container_width=True, hide_index=True)
             else:
                 st.caption("Keine Daten für diesen Tag.")
 else:
