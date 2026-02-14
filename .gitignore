@@ -1,0 +1,10 @@
+.env
+*.db
+exports/*
+!exports/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+*.log
