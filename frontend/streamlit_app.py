@@ -186,6 +186,10 @@ def load_utilization(d_start: date, d_end: date) -> pd.DataFrame:
 
 
 df_jobs = load_jobs(date_start, date_end)
+# Nur Roboter anzeigen, die in ROBOT_NAME_MAP sind (Donald, Mickey) – Unattended/RPA-SCRG-007 etc. ausblenden
+if not df_jobs.empty and "robot_key" in df_jobs.columns:
+    allowed_keys = set(ROBOT_NAME_MAP.keys())
+    df_jobs = df_jobs[df_jobs["robot_key"].astype(str).isin(allowed_keys)].copy()
 df_util = load_utilization(date_start, date_end)
 df_util_complete = df_util[df_util["date"] < today] if not df_util.empty else pd.DataFrame()
 df_util_kpi = df_util_complete[df_util_complete["robot_name"].astype(str).str.contains("RPA-", na=False)] if not df_util_complete.empty else pd.DataFrame()
