@@ -697,7 +697,7 @@ if selected_messstellen_prozess == "Reklamation Ablehnen":
     with qf2:
         st.metric("Ø Dauer", f"{avg_dur_min:.1f} min")
         if ablehnen_df is not None and not ablehnen_df.empty:
-            st.metric("Messstellen insgesamt (letzter Monat)", int(ablehnen_df["n"].sum()))
+            st.metric("Datensätze insgesamt (letzter Monat)", int(ablehnen_df["n"].sum()))
     with qf3:
         st.metric("Runs gesamt", total_runs)
         st.metric("Max. Runtime", f"{max_dur_min:.1f} min")
