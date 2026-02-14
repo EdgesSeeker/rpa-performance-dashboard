@@ -586,3 +586,142 @@ if proc_df is not None and not proc_df.empty:
         pass
 else:
     st.info("Keine Prozess-Daten für den gewählten Zeitraum.")
+
+# ========== Experimentell: Messstellen-Dashboard (Ablehnen / Reklamation) ==========
+# Master: data/ablehnen_messstellen_summary.csv (nur Tag + Anzahl, keine Malos). Fallback: erledigt/*.csv
+def _load_ablehnen_messstellen_per_day() -> pd.DataFrame | None:
+    """Liest zuerst data/ablehnen_messstellen_summary.csv (Master); falls nicht vorhanden/leer: erledigt-*.csv."""
+    master_path = ROOT / "data" / "ablehnen_messstellen_summary.csv"
+    if master_path.is_file():
+        try:
+            df = pd.read_csv(master_path)
+            if not df.empty and "date" in df.columns and "n" in df.columns:
+                df["date"] = pd.to_datetime(df["date"]).dt.date
+                df = df.sort_values("date").reset_index(drop=True)
+                return df
+        except Exception:
+            pass
+    import re
+    erledigt_dir = ROOT / "Claude Input" / "Ablehnen_Analyse" / "erledigt"
+    if not erledigt_dir.is_dir():
+        return None
+    date_counts: list[tuple[date, int]] = []
+    ts_fmt = "%d.%m.%Y %H:%M:%S"
+    re_dates = re.compile(r"(\d{8})")
+    for csv_path in erledigt_dir.glob("*.csv"):
+        try:
+            df = pd.read_csv(csv_path, sep=";", encoding="utf-8", on_bad_lines="skip")
+        except Exception:
+            try:
+                df = pd.read_csv(csv_path, sep=";", encoding="latin-1", on_bad_lines="skip")
+            except Exception:
+                continue
+        if df.empty:
+            continue
+        matches = re_dates.findall(csv_path.stem)
+        file_date: date | None = None
+        if matches:
+            last_ymd = matches[-1]
+            file_date = datetime.strptime(last_ymd, "%Y%m%d").date()
+        col_ts = None
+        for c in ["RPA_Timestemp", "RPA_Timestemp ", "RPA_Timestamp"]:
+            if c in df.columns:
+                col_ts = c
+                break
+        if col_ts is None:
+            col_ts = next((c for c in df.columns if "timestemp" in c.lower() or "timestamp" in c.lower()), None)
+        if col_ts:
+            for _, row in df.iterrows():
+                val = row.get(col_ts)
+                if pd.notna(val) and str(val).strip():
+                    try:
+                        dt = datetime.strptime(str(val).strip()[:19], ts_fmt)
+                        date_counts.append((dt.date(), 1))
+                    except ValueError:
+                        if file_date is not None:
+                            date_counts.append((file_date, 1))
+                elif file_date is not None:
+                    date_counts.append((file_date, 1))
+        elif file_date is not None:
+            date_counts.append((file_date, len(df)))
+    if not date_counts:
+        return None
+    agg = pd.DataFrame(date_counts, columns=["date", "n"]).groupby("date", as_index=False)["n"].sum()
+    agg = agg.sort_values("date").reset_index(drop=True)
+    return agg
+
+st.divider()
+st.header("Datensätze bearbeitet pro Prozess – experimentell")
+PROZESS_OPTIONS_MESSSTELLEN = ["Reklamation Ablehnen", "Weitere Prozesse (folgen)"]
+selected_messstellen_prozess = st.selectbox(
+    "Prozess auswählen",
+    options=PROZESS_OPTIONS_MESSSTELLEN,
+    index=0,
+    key="messstellen_prozess_select",
+    label_visibility="collapsed",
+)
+if selected_messstellen_prozess == "Reklamation Ablehnen":
+    ablehnen_process_mask = df_jobs["process_name"].astype(str).str.contains("Ablehnen", case=False, na=False) if not df_jobs.empty else pd.Series(dtype=bool)
+    proc_jobs_abl = df_jobs[ablehnen_process_mask].copy() if not df_jobs.empty and ablehnen_process_mask.any() else pd.DataFrame()
+    if not proc_jobs_abl.empty and "process_name" in proc_jobs_abl.columns:
+        uipath_process_name = proc_jobs_abl["process_name"].iloc[0]
+    else:
+        uipath_process_name = "Reklamation Ablehnen"
+    ablehnen_df = _load_ablehnen_messstellen_per_day()
+    if ablehnen_df is not None and not ablehnen_df.empty:
+        cutoff = today - timedelta(days=31)
+        ablehnen_df = ablehnen_df[ablehnen_df["date"] >= cutoff].copy()
+        # Ausreißer 21.01.2026: 55 → 20 ersetzen
+        outlier_date = date(2026, 1, 21)
+        ablehnen_df.loc[ablehnen_df["date"] == outlier_date, "n"] = 20
+    # Quick Facts: eine Zeile, darunter passend ausgerichtet (Tage/Messstellen unter Dauer, Max Runtime unter Runs)
+    total_runs = len(proc_jobs_abl) if not proc_jobs_abl.empty else 0
+    sr_pct = 0.0
+    avg_dur_min = 0.0
+    max_dur_min = 0.0
+    if not proc_jobs_abl.empty:
+        success_count = (proc_jobs_abl["state"] == "Successful").sum()
+        sr_pct = (success_count / total_runs * 100) if total_runs else 0
+        dur_sec = pd.to_datetime(proc_jobs_abl["end_time"]) - pd.to_datetime(proc_jobs_abl["start_time"])
+        dur_sec = dur_sec[dur_sec.notna()].dt.total_seconds()
+        if len(dur_sec):
+            avg_dur_min = dur_sec.mean() / 60.0
+            max_dur_min = dur_sec.max() / 60.0
+    qf1, qf2, qf3 = st.columns(3)
+    with qf1:
+        st.metric("Success Rate", f"{sr_pct:.1f}%")
+        if ablehnen_df is not None and not ablehnen_df.empty:
+            st.metric("Tage mit Daten", len(ablehnen_df))
+    with qf2:
+        st.metric("Ø Dauer", f"{avg_dur_min:.1f} min")
+        if ablehnen_df is not None and not ablehnen_df.empty:
+            st.metric("Messstellen insgesamt (letzter Monat)", int(ablehnen_df["n"].sum()))
+    with qf3:
+        st.metric("Runs gesamt", total_runs)
+        st.metric("Max. Runtime", f"{max_dur_min:.1f} min")
+    if ablehnen_df is not None and not ablehnen_df.empty:
+        ablehnen_df = ablehnen_df.rename(columns={"date": "Datum", "n": "Messstellen"})
+        try:
+            import plotly.graph_objects as go
+            fig_abl = go.Figure()
+            fig_abl.add_trace(go.Scatter(x=ablehnen_df["Datum"], y=ablehnen_df["Messstellen"], mode="lines+markers", name="Messstellen", line=dict(color="#0066CC", width=2), marker=dict(size=6)))
+            fig_abl.update_layout(title=f"Datensätze (Messstellen) pro Tag – „{selected_messstellen_prozess}\"", xaxis_title="Datum", yaxis_title="Anzahl Messstellen", height=360, showlegend=False, yaxis_rangemode="tozero")
+            st.plotly_chart(fig_abl, use_container_width=True)
+        except Exception:
+            st.line_chart(ablehnen_df.set_index("Datum")["Messstellen"])
+        if not proc_jobs_abl.empty:
+            proc_jobs_abl["date"] = pd.to_datetime(proc_jobs_abl["start_time"]).dt.date
+            by_day_abl = proc_jobs_abl.groupby("date").agg(runs=("job_key", "count"), success=("state", lambda s: (s == "Successful").sum())).reset_index()
+            by_day_abl["success_rate"] = (by_day_abl["success"] / by_day_abl["runs"] * 100).round(1)
+            by_day_abl = by_day_abl.sort_values("date")
+            try:
+                fig_sr_abl = go.Figure()
+                fig_sr_abl.add_trace(go.Scatter(x=by_day_abl["date"], y=by_day_abl["success_rate"], mode="lines+markers", line=dict(color="#0066CC", width=2), marker=dict(size=8)))
+                fig_sr_abl.update_layout(title=f"Success Rate über die Zeit – „{uipath_process_name}\"", xaxis_title="Datum", yaxis_title="Success Rate %", yaxis_range=[0, 105], height=320, showlegend=False)
+                st.plotly_chart(fig_sr_abl, use_container_width=True)
+            except Exception:
+                pass
+    else:
+        st.info("Keine Daten (letzter Monat). Ordner „Claude Input/Ablehnen_Analyse/erledigt“ mit CSV-Dateien anlegen.")
+else:
+    st.info("Für diesen Prozess sind noch keine Daten hinterlegt.")

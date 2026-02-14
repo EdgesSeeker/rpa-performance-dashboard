@@ -8,3 +8,8 @@ __pycache__/
 venv/
 .idea/
 *.log
+
+# Ablehnen: Roh-CSVs mit Malos nicht ins Repo (nur data/ablehnen_messstellen_summary.csv wird genutzt)
+Claude Input/Ablehnen_Analyse/erledigt/
+Claude Input/Ablehnen_Analyse/geparkt/
+Claude Input/Ablehnen_Analyse/*.csv
