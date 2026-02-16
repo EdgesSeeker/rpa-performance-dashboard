@@ -20,6 +20,10 @@ Kopiere `.env.example` nach `.env` und trage deine UiPath-Credentials ein (falls
 - Folder: `UIPATH_FOLDER_ID` in .env (z. B. 5719144 für Lackmann) – bei "A folder is required" nötig
 - Optional: `ROBOT_NAME_MAP={"Unattended": "Donald"}` in .env für Anzeigenamen der Roboter
 
+**Passwortschutz:**
+- Standard-Passwort: `RPA_Intern` (im Code hinterlegt)
+- Optional: Setze `APP_PASSWORD=anderes-passwort` in der `.env` Datei, um ein anderes Passwort zu verwenden
+
 ## Auf dem Firmenrechner (oder anderem PC) lokal ausführen
 
 Du kannst das Projekt 1:1 auf deinen Arbeitslaptop kopieren und dort **lokal** starten – ohne Deploy, nur für dich zum Vorzeigen.
@@ -97,7 +101,9 @@ Die App kann **kostenlos** auf [Streamlit Community Cloud](https://share.streaml
    UIPATH_ORG_SLUG = "dein-org-slug"
    UIPATH_TENANT_NAME = "DefaultTenant"
    UIPATH_FOLDER_ID = "5719144"
+   APP_PASSWORD = "RPA_Intern"
    ```
+   **Hinweis:** `APP_PASSWORD` ist optional. Standard-Passwort ist `RPA_Intern`. Wenn du ein anderes Passwort verwenden möchtest, setze es hier.
 4. **Deploy:** Nach „Deploy“ baut Streamlit die App (1–2 Min.). Danach einmal **„Daten von UiPath laden“** in der Sidebar klicken, damit die DB gefüllt wird (auf der Cloud ist das Dateisystem ephemeral – nach Neustart/Sleep ist die DB wieder leer).
 
 ## Projektstruktur

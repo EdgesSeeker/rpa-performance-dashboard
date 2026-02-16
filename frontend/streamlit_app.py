@@ -16,6 +16,76 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
+# ========== Passwortschutz ==========
+# st.set_page_config muss als erstes aufgerufen werden
+st.set_page_config(page_title="RPA Performance", layout="wide")
+
+def get_app_password() -> str:
+    """Lädt APP_PASSWORD aus Umgebungsvariablen, Streamlit Secrets oder verwendet Standardwert."""
+    # Standard-Passwort
+    DEFAULT_PASSWORD = "RPA_Intern"
+    
+    # Zuerst aus Umgebungsvariablen (lokal via .env) - kann Standard überschreiben
+    password = os.getenv("APP_PASSWORD")
+    if password:
+        return password
+    # Fallback: Streamlit Secrets (für Cloud-Deploy)
+    try:
+        if hasattr(st, "secrets") and "APP_PASSWORD" in st.secrets:
+            return st.secrets["APP_PASSWORD"]
+    except Exception:
+        pass
+    # Standard-Passwort verwenden
+    return DEFAULT_PASSWORD
+
+
+def check_authentication() -> bool:
+    """Prüft, ob der Benutzer authentifiziert ist. Zeigt Login-Formular falls nicht."""
+    # Initialisiere Session State für Authentifizierung
+    if "is_authenticated" not in st.session_state:
+        st.session_state.is_authenticated = False
+    
+    # Wenn bereits authentifiziert, erlaube Zugriff
+    if st.session_state.is_authenticated:
+        return True
+    
+    # Lade Passwort (Standard: "RPA_Intern", kann über Umgebungsvariablen überschrieben werden)
+    app_password = get_app_password()
+    
+    # Zeige Login-Formular
+    st.title("🔒 Passwort erforderlich")
+    st.markdown("Bitte geben Sie das Passwort ein, um auf das Dashboard zuzugreifen.")
+    
+    # Passwort-Eingabe
+    password_input = st.text_input(
+        "Passwort",
+        type="password",
+        key="password_input",
+        label_visibility="visible",
+    )
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        login_button = st.button("Anmelden", type="primary", use_container_width=True)
+    
+    # Prüfe Passwort bei Button-Klick
+    if login_button:
+        if password_input == app_password:
+            st.session_state.is_authenticated = True
+            st.success("✅ Erfolgreich angemeldet!")
+            st.rerun()
+        else:
+            st.error("❌ Falsches Passwort. Bitte versuchen Sie es erneut.")
+            st.stop()
+    
+    # Blockiere weiteren Code, bis authentifiziert
+    st.stop()
+    return False
+
+
+# Authentifizierung prüfen (muss vor allem anderen passieren)
+check_authentication()
+
 from backend.database import SessionLocal, Job, DailyUtilization, init_tables
 import backend.sync_jobs as sync_jobs_module
 import backend.calculate_utilization as calc_util_module
@@ -75,8 +145,14 @@ def _compute_process_stats(df_jobs: pd.DataFrame) -> pd.DataFrame | None:
     return proc
 
 
-st.set_page_config(page_title="RPA Performance", layout="wide")
 st.title("RPA Performance Monitoring")
+
+# Logout-Button in Sidebar
+st.sidebar.divider()
+if st.sidebar.button("🚪 Abmelden", use_container_width=True):
+    st.session_state.is_authenticated = False
+    st.rerun()
+st.sidebar.divider()
 
 # Sidebar: date range with quick presets and custom range
 today = date.today()
