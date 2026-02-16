@@ -147,17 +147,30 @@ def _compute_process_stats(df_jobs: pd.DataFrame) -> pd.DataFrame | None:
 
 st.title("RPA Performance Monitoring")
 
-# Logout-Button in Sidebar
-st.sidebar.divider()
-if st.sidebar.button("🚪 Abmelden", use_container_width=True):
-    st.session_state.is_authenticated = False
+# Button oben links für UiPath Daten laden
+if "load_success" in st.session_state:
+    st.success(st.session_state.load_success)
+    del st.session_state["load_success"]
+if st.button("Get UiPath Data", type="primary"):
+    sync_days = 90
+    with st.spinner(f"Lade Daten von UiPath … ({sync_days} Tage, kann 1–2 Min. dauern)"):
+        try:
+            n_jobs = sync_jobs_module.run_sync(days=sync_days)
+            n_util = calc_util_module.calculate_and_store()
+            st.cache_data.clear()
+            st.session_state["load_success"] = f"Fertig: {n_jobs} Jobs synchronisiert, {n_util} Utilization-Tage berechnet."
+        except Exception as e:
+            st.error(f"Fehler beim Laden: {e}")
+            st.stop()
     st.rerun()
-st.sidebar.divider()
 
-# Sidebar: date range with quick presets and custom range
+st.divider()
+
+# Sidebar: Verbessertes Design
+# Zeitraum-Auswahl mit besserem Design
+st.sidebar.markdown("**📅 Zeitraum**")
 today = date.today()
 yesterday = today - timedelta(days=1)
-st.sidebar.subheader("Zeitraum")
 preset = st.sidebar.radio(
     "Schnellauswahl",
     ["1 Tag (gestern)", "7 Tage", "30 Tage", "90 Tage", "Eigener Bereich"],
@@ -181,24 +194,12 @@ else:
     date_end = st.sidebar.date_input("Bis", value=today, max_value=today, min_value=date_start)
     if date_end < date_start:
         date_end = date_start
-st.sidebar.caption(f"Anzeige: {date_start} bis {date_end}")
+st.sidebar.caption(f"📊 Anzeige: {date_start} bis {date_end}")
 
-# Daten von UiPath laden (für gehostete App / Streamlit Cloud)
+# Abmelden-Button am Ende der Sidebar
 st.sidebar.divider()
-if "load_success" in st.session_state:
-    st.sidebar.success(st.session_state.load_success)
-    del st.session_state["load_success"]
-if st.sidebar.button("Daten von UiPath laden"):
-    sync_days = 90
-    with st.spinner(f"Lade Daten von UiPath … ({sync_days} Tage, kann 1–2 Min. dauern)"):
-        try:
-            n_jobs = sync_jobs_module.run_sync(days=sync_days)
-            n_util = calc_util_module.calculate_and_store()
-            st.cache_data.clear()
-            st.session_state["load_success"] = f"Fertig: {n_jobs} Jobs synchronisiert, {n_util} Utilization-Tage berechnet."
-        except Exception as e:
-            st.sidebar.error(f"Fehler beim Laden: {e}")
-            st.stop()
+if st.sidebar.button("🚪 Abmelden", use_container_width=True, type="secondary"):
+    st.session_state.is_authenticated = False
     st.rerun()
 
 
